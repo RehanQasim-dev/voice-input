@@ -1,9 +1,14 @@
 package org.futo.voiceinput.settings.pages
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -24,6 +29,8 @@ import org.futo.voiceinput.MULTILINGUAL_MODELS
 import org.futo.voiceinput.R
 import org.futo.voiceinput.migration.ConditionalModelUpdate
 import org.futo.voiceinput.migration.NeedsMigration
+import org.futo.voiceinput.importModelBin
+import org.futo.voiceinput.openURI
 import org.futo.voiceinput.settings.DISMISS_MIGRATION_TIP
 import org.futo.voiceinput.settings.ENABLE_MULTILINGUAL
 import org.futo.voiceinput.settings.ENGLISH_MODEL_INDEX
@@ -41,7 +48,6 @@ import org.futo.voiceinput.settings.Tip
 import org.futo.voiceinput.settings.USE_LANGUAGE_SPECIFIC_MODELS
 import org.futo.voiceinput.settings.getSettingBlocking
 import org.futo.voiceinput.settings.useDataStore
-import org.futo.voiceinput.startModelDownloadActivity
 
 @Composable
 fun modelsSubtitle(): String? {
@@ -140,23 +146,19 @@ fun ModelsScreen(
     val wasMigrated = useDataStore(setting = MODELS_MIGRATED)
     val dismissMigrationTip = useDataStore(setting = DISMISS_MIGRATION_TIP)
 
-    val launchDownloaderIfNecessary = {
-        if (useMultilingual) {
-            context.startModelDownloadActivity(
-                listOf(
-                    ENGLISH_MODELS[englishModelIndex.value],
-                    MULTILINGUAL_MODELS[multilingualModelIndex.value]
-                )
-            )
-        } else {
-            context.startModelDownloadActivity(listOf(ENGLISH_MODELS[englishModelIndex.value]))
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri != null) {
+            val target = context.importModelBin(uri)
+            Toast.makeText(
+                context,
+                when {
+                    target == null -> context.getString(R.string.import_model_builtin_error)
+                    else -> context.getString(R.string.import_model_success, target)
+                },
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
-
-    LaunchedEffect(listOf(useMultilingual, englishModelIndex.value, multilingualModelIndex.value)) {
-        launchDownloaderIfNecessary()
-    }
-
 
     ScrollableList {
         ScreenTitle(stringResource(R.string.model_options), showBack = true, navController = navController)
@@ -199,6 +201,23 @@ fun ModelsScreen(
             )
         }
 
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+            Button(
+                onClick = { context.openURI("https://voiceinput.futo.org/VoiceInput/") },
+                modifier = Modifier.weight(1.0f).padding(end = 4.dp)
+            ) {
+                Text(stringResource(R.string.explore_models))
+            }
+
+            Button(
+                onClick = { importLauncher.launch(arrayOf("*/*")) },
+                modifier = Modifier.weight(1.0f).padding(start = 4.dp)
+            ) {
+                Text(stringResource(R.string.import_model_bin))
+            }
+        }
+
+        Tip(stringResource(R.string.import_model_tip))
         Tip(stringResource(R.string.parameter_count_tip))
     }
 }

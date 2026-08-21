@@ -29,6 +29,7 @@ import kotlinx.coroutines.yield
 import org.futo.voiceinput.ggml.DecodingMode
 import org.futo.voiceinput.ml.RunState
 import org.futo.voiceinput.ml.WhisperModelWrapper
+import org.futo.voiceinput.settings.SettingsActivity
 import org.futo.voiceinput.settings.BEAM_SEARCH
 import org.futo.voiceinput.settings.DISALLOW_SYMBOLS
 import org.futo.voiceinput.settings.ENABLE_30S_LIMIT
@@ -212,12 +213,7 @@ abstract class AudioRecognizer {
                 }
             )
         } catch (e: IOException) {
-            context.startModelDownloadActivity(
-                listOf(primaryModel).let {
-                    if (secondaryModel != null) it + secondaryModel
-                    else it
-                }
-            )
+            context.startAppActivity(SettingsActivity::class.java)
             cancelRecognizer()
         }
     }
@@ -446,8 +442,8 @@ abstract class AudioRecognizer {
                             isMicBlocked = true
                         }
 
-                        // End if VAD hasn't detected speech in a while
-                        if(shouldUseVad && hasTalked && (numConsecutiveNonSpeech > 66)) {
+                        // End if VAD hasn't detected speech in a while (~1.5s of silence)
+                        if(shouldUseVad && hasTalked && (numConsecutiveNonSpeech > 50)) {
                             withContext(Dispatchers.Main){ finishRecognizer() }
                             break
                         }

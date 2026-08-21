@@ -91,6 +91,11 @@
     <string name="model_picker">Model Picker</string>
     <string name="model_options">Model Options</string>
     <string name="parameter_count_tip">Tip: The number is the model\'s parameter count in millions. More parameters = slower and more accurate</string>
+    <string name="explore_models">Explore Models</string>
+    <string name="import_model_bin">Import Model .bin</string>
+    <string name="import_model_tip">Tip: Use Explore to download a model in your browser, then Import to load the downloaded .bin file. Import fills the first missing selected model.</string>
+    <string name="import_model_success">Imported model file for: %s. Toggle the keyboard off/on to apply.</string>
+    <string name="import_model_builtin_error">The selected model is built into the app, nothing to import. Select a downloadable model first.</string>
     <string name="english_model">English Model</string>
     <string name="multilingual_model">Multilingual Model</string>
     <string name="payment_text_1">You\'ve been using FUTO Voice Input for <xliff:g name="days" example="30">%d</xliff:g> days. If you find this app useful, please consider paying to support future development of FUTO software.</string>

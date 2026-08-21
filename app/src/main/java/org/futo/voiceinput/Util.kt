@@ -8,11 +8,13 @@ import android.net.Uri
 import android.widget.Toast
 import org.futo.voiceinput.downloader.DownloadActivity
 import org.futo.voiceinput.settings.ENGLISH_MODEL_INDEX
+import org.futo.voiceinput.settings.ENABLE_MULTILINGUAL
 import org.futo.voiceinput.settings.LANGUAGE_TOGGLES
 import org.futo.voiceinput.settings.MANUALLY_SELECT_LANGUAGE
 import org.futo.voiceinput.settings.MULTILINGUAL_MODEL_INDEX
 import org.futo.voiceinput.settings.USE_LANGUAGE_SPECIFIC_MODELS
 import org.futo.voiceinput.settings.getSetting
+import org.futo.voiceinput.settings.getSettingBlocking
 import java.io.File
 
 enum class Status {
@@ -132,6 +134,30 @@ fun Context.startModelDownloadActivity(models: List<ModelData>) {
     }
 
     startActivity(intent)
+}
+
+// Copies a user-provided .bin into the file slot of the first missing selected
+// model (falls back to the selected English model). Returns the target name,
+// or null when the selected slot is a built-in asset.
+fun Context.importModelBin(uri: Uri): String? {
+    val englishModel = ENGLISH_MODELS[getSettingBlocking(ENGLISH_MODEL_INDEX.key, ENGLISH_MODEL_INDEX.default)]
+    val candidates = mutableListOf(englishModel)
+
+    if(getSettingBlocking(ENABLE_MULTILINGUAL.key, ENABLE_MULTILINGUAL.default)) {
+        candidates.add(MULTILINGUAL_MODELS[getSettingBlocking(MULTILINGUAL_MODEL_INDEX.key, MULTILINGUAL_MODEL_INDEX.default)])
+    }
+
+    val target = candidates.firstOrNull { modelNeedsDownloading(it) } ?: candidates.first()
+
+    if(target.ggml.is_builtin_asset) return null
+
+    contentResolver.openInputStream(uri)?.use { input ->
+        File(filesDir, target.ggml.ggml_file).outputStream().use { output ->
+            input.copyTo(output)
+        }
+    } ?: return null
+
+    return target.name
 }
 
 fun <T> Context.startAppActivity(activity: Class<T>, clearTop: Boolean = false) {

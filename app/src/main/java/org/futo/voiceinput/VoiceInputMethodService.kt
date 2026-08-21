@@ -2,15 +2,18 @@ package org.futo.voiceinput
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Region
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -20,12 +23,15 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.isUnspecified
@@ -39,6 +45,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
@@ -76,7 +83,11 @@ fun navBarHeight(): Dp = with(LocalDensity.current) {
 object PillPositionState {
     var offset: Offset by mutableStateOf(Offset.Unspecified)
     var size: IntSize by mutableStateOf(IntSize.Zero)
+    var backspaceOffset: Offset by mutableStateOf(Offset.Unspecified)
+    var enterOffset: Offset by mutableStateOf(Offset.Unspecified)
     var onInsetsRefreshRequest: (() -> Unit)? = null
+    var onBackspace: (() -> Unit)? = null
+    var onEnter: (() -> Unit)? = null
 
     fun notifyMoved() {
         onInsetsRefreshRequest?.invoke()
@@ -84,6 +95,55 @@ object PillPositionState {
 }
 
 private const val PILL_DEFAULT_BOTTOM_MARGIN_DP = 12
+private const val BUTTON_DEFAULT_BOTTOM_MARGIN_DP = 12
+const val BACKSPACE_DEFAULT_CENTER_X_FRACTION = 0.30f
+const val ENTER_DEFAULT_CENTER_X_FRACTION = 0.70f
+
+@Composable
+private fun DraggableActionButton(
+    glyph: String,
+    size: Dp,
+    stored: Offset,
+    defaultPos: Offset,
+    maxX: Float,
+    maxY: Float,
+    assign: (Offset) -> Unit,
+    onTap: () -> Unit
+) {
+    val pos = if (stored.isUnspecified) defaultPos else stored
+
+    Surface(
+        modifier = Modifier
+            .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
+            .size(size)
+            .recognizerSurfaceClickable(
+                disabled = false,
+                onPauseVAD = { },
+                onTap = onTap,
+                onLongPress = { },
+                onDrag = { delta ->
+                    val current = if (stored.isUnspecified) defaultPos else stored
+                    assign(
+                        Offset(
+                            x = (current.x + delta.x).coerceIn(0f, maxX),
+                            y = (current.y + delta.y).coerceIn(0f, maxY)
+                        )
+                    )
+                    PillPositionState.notifyMoved()
+                }
+            ),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(percent = 50)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                glyph,
+                fontSize = 22.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
 @Composable
 fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Boolean = false, onPauseVAD: (Boolean) -> Unit = { }, onFinish: () -> Unit = { }, onTap: () -> Unit = { }, content: @Composable ColumnScope.() -> Unit) {
@@ -107,6 +167,22 @@ fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Bo
 
             val rawPos = if (PillPositionState.offset.isUnspecified) defaultPos else PillPositionState.offset
             val pos = Offset(rawPos.x.coerceIn(0f, maxX), rawPos.y.coerceIn(0f, maxY))
+
+            val buttonSize = 44.dp
+            val buttonSizePx = with(density) { buttonSize.toPx() }
+            val buttonMaxX = (rootWidthPx - buttonSizePx).coerceAtLeast(0f)
+            val buttonMaxY = (rootHeightPx - buttonSizePx).coerceAtLeast(0f)
+            val buttonBottomY = with(density) {
+                rootHeightPx - buttonSizePx - BUTTON_DEFAULT_BOTTOM_MARGIN_DP.dp.toPx()
+            }
+            val backspaceDefault = Offset(
+                x = rootWidthPx * BACKSPACE_DEFAULT_CENTER_X_FRACTION - buttonSizePx / 2f,
+                y = buttonBottomY
+            )
+            val enterDefault = Offset(
+                x = rootWidthPx * ENTER_DEFAULT_CENTER_X_FRACTION - buttonSizePx / 2f,
+                y = buttonBottomY
+            )
 
             Surface(
                 modifier = Modifier
@@ -135,6 +211,28 @@ fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Bo
                     content()
                 }
             }
+
+            DraggableActionButton(
+                glyph = "⌫",
+                size = buttonSize,
+                stored = PillPositionState.backspaceOffset,
+                defaultPos = backspaceDefault,
+                maxX = buttonMaxX,
+                maxY = buttonMaxY,
+                assign = { PillPositionState.backspaceOffset = it },
+                onTap = { PillPositionState.onBackspace?.invoke() }
+            )
+
+            DraggableActionButton(
+                glyph = "↵",
+                size = buttonSize,
+                stored = PillPositionState.enterOffset,
+                defaultPos = enterDefault,
+                maxX = buttonMaxX,
+                maxY = buttonMaxY,
+                assign = { PillPositionState.enterOffset = it },
+                onTap = { PillPositionState.onEnter?.invoke() }
+            )
         }
     }
 }
@@ -317,6 +415,22 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
             window.window?.decorView?.requestLayout()
         }
 
+        PillPositionState.onBackspace = {
+            val ic = currentInputConnection
+            if (ic != null) {
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
+            }
+        }
+
+        PillPositionState.onEnter = {
+            val ic = currentInputConnection
+            if (ic != null) {
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+            }
+        }
+
         composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setParentCompositionContext(null)
@@ -343,18 +457,31 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
 
-        val pos = PillPositionState.offset
-        val size = PillPositionState.size
-
         val dm = resources.displayMetrics
         val density = dm.density
         val pillPx = 56f * density
+        val buttonPx = 44f * density
         val marginPx = PILL_DEFAULT_BOTTOM_MARGIN_DP * density
 
-        val left = if (pos.isUnspecified) ((dm.widthPixels - pillPx) / 2f).toInt() else pos.x.toInt()
-        val top = if (pos.isUnspecified) (dm.heightPixels - pillPx - marginPx).toInt() else pos.y.toInt()
-        val width = if (size.width == 0) pillPx.toInt() else size.width
-        val height = if (size.height == 0) pillPx.toInt() else size.height
+        fun rectFor(offset: Offset, sizePx: Float, defaultCenterXFraction: Float): android.graphics.Rect {
+            val side = sizePx.toInt()
+            val left = if (offset.isUnspecified) {
+                ((dm.widthPixels * defaultCenterXFraction) - sizePx / 2f).toInt()
+            } else {
+                offset.x.toInt()
+            }
+            val top = if (offset.isUnspecified) {
+                (dm.heightPixels - sizePx - marginPx).toInt()
+            } else {
+                offset.y.toInt()
+            }
+            return android.graphics.Rect(left, top, left + side, top + side)
+        }
+
+        val region = Region()
+        region.union(rectFor(PillPositionState.offset, pillPx, 0.50f))
+        region.union(rectFor(PillPositionState.backspaceOffset, buttonPx, BACKSPACE_DEFAULT_CENTER_X_FRACTION))
+        region.union(rectFor(PillPositionState.enterOffset, buttonPx, ENTER_DEFAULT_CENTER_X_FRACTION))
 
         val decorHeight = window.window?.decorView?.height ?: 0
         val zeroClaim = if (decorHeight > 0) decorHeight else dm.heightPixels
@@ -362,9 +489,7 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         outInsets.contentTopInsets = zeroClaim
         outInsets.visibleTopInsets = zeroClaim
         outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-        outInsets.touchableRegion.set(
-            android.graphics.Rect(left, top, left + width, top + height)
-        )
+        outInsets.touchableRegion.set(region)
     }
 
     override fun onCreateCandidatesView(): View? {
