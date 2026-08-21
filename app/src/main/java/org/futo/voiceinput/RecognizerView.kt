@@ -14,6 +14,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -53,6 +54,7 @@ import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -77,35 +79,44 @@ import org.futo.voiceinput.theme.Typography
 
 const val LONG_PRESS_EXIT_DURATION_MS = 1500L
 
-fun Modifier.recognizerSurfaceClickable(disabled: Boolean, onPauseVAD: (Boolean) -> Unit, onTap: () -> Unit, onLongPress: () -> Unit): Modifier = composed {
+fun Modifier.recognizerSurfaceClickable(disabled: Boolean, onPauseVAD: (Boolean) -> Unit, onTap: () -> Unit, onLongPress: () -> Unit, onDrag: (Offset) -> Unit = { }): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val ripple = rememberRipple(bounded = false)
 
-    this.pointerInput(disabled) {
-            detectTapGestures(onPress = { offset ->
-                if(!disabled) {
-                    val press = PressInteraction.Press(offset)
-
-                    interactionSource.emit(press)
-                    onPauseVAD(true)
-                    val pressStart = SystemClock.elapsedRealtime()
-                    val didRelease = this.tryAwaitRelease()
-                    onPauseVAD(false)
-
-                    if (didRelease) {
-                        interactionSource.emit(PressInteraction.Release(press))
-
-                        if (SystemClock.elapsedRealtime() - pressStart >= LONG_PRESS_EXIT_DURATION_MS) {
-                            onLongPress()
-                        } else {
-                            onTap()
-                        }
-                    } else {
-                        interactionSource.emit(PressInteraction.Cancel(press))
-                    }
+    this.pointerInput(disabled, onDrag) {
+        detectDragGestures(
+            onDrag = { change, dragAmount ->
+                if (!disabled) {
+                    onDrag(dragAmount)
+                    change.consume()
                 }
-            })
-        }.indication(interactionSource, ripple).semantics(mergeDescendants = true) { }
+            }
+        )
+    }.pointerInput(disabled) {
+        detectTapGestures(onPress = { offset ->
+            if(!disabled) {
+                val press = PressInteraction.Press(offset)
+
+                interactionSource.emit(press)
+                onPauseVAD(true)
+                val pressStart = SystemClock.elapsedRealtime()
+                val didRelease = this.tryAwaitRelease()
+                onPauseVAD(false)
+
+                if (didRelease) {
+                    interactionSource.emit(PressInteraction.Release(press))
+
+                    if (SystemClock.elapsedRealtime() - pressStart >= LONG_PRESS_EXIT_DURATION_MS) {
+                        onLongPress()
+                    } else {
+                        onTap()
+                    }
+                } else {
+                    interactionSource.emit(PressInteraction.Cancel(press))
+                }
+            }
+        })
+    }.indication(interactionSource, ripple).semantics(mergeDescendants = true) { }
 }
 
 @Composable

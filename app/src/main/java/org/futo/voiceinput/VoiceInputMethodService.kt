@@ -6,29 +6,41 @@ import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.text.InputType
 import android.view.View
+import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isUnspecified
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleCoroutineScope
@@ -62,18 +74,74 @@ fun navBarHeight(): Dp = with(LocalDensity.current) {
 }
 
 
+object PillPositionState {
+    var offset: Offset by mutableStateOf(Offset.Unspecified)
+    var size: IntSize by mutableStateOf(IntSize.Zero)
+    var onInsetsRefreshRequest: (() -> Unit)? = null
+
+    fun notifyMoved() {
+        onInsetsRefreshRequest?.invoke()
+    }
+}
+
+private const val PILL_DEFAULT_BOTTOM_MARGIN_DP = 12
+
 @Composable
 fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Boolean = false, onPauseVAD: (Boolean) -> Unit = { }, onFinish: () -> Unit = { }, onTap: () -> Unit = { }, content: @Composable ColumnScope.() -> Unit) {
     UixThemeAuto(false) {
-        Surface(
-            modifier = Modifier
-                .recognizerSurfaceClickable(disabled = !allowClick, onPauseVAD = onPauseVAD, onTap = onTap, onLongPress = { switchBack?.invoke() })
-                .wrapContentSize(Alignment.BottomCenter),
-            color = Color.Transparent,
-            shape = RoundedCornerShape(percent = 50)
-        ) {
-            Column {
-                content()
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val density = LocalDensity.current
+            val pillSize = 56.dp
+            val pillSizePx = with(density) { pillSize.toPx() }
+
+            val defaultPos = with(density) {
+                Offset(
+                    x = (maxWidth - pillSize).toPx() / 2f,
+                    y = (maxHeight - pillSize - PILL_DEFAULT_BOTTOM_MARGIN_DP.dp).toPx()
+                )
+            }
+
+            val rootWidthPx = with(density) { maxWidth.toPx() }
+            val rootHeightPx = with(density) { maxHeight.toPx() }
+            val maxX = (rootWidthPx - pillSizePx).coerceAtLeast(0f)
+            val maxY = (rootHeightPx - pillSizePx).coerceAtLeast(0f)
+
+            val rawPos = if (PillPositionState.offset.isUnspecified) defaultPos else PillPositionState.offset
+            val pos = Offset(rawPos.x.coerceIn(0f, maxX), rawPos.y.coerceIn(0f, maxY))
+
+            LaunchedEffect(Unit) {
+                if (PillPositionState.offset.isUnspecified) {
+                    PillPositionState.offset = defaultPos
+                    PillPositionState.notifyMoved()
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .offset { IntOffset(pos.x.roundToInt(), pos.y.roundToInt()) }
+                    .size(pillSize)
+                    .onSizeChanged { PillPositionState.size = it }
+                    .recognizerSurfaceClickable(
+                        disabled = !allowClick,
+                        onPauseVAD = onPauseVAD,
+                        onTap = onTap,
+                        onLongPress = { switchBack?.invoke() },
+                        onDrag = { delta ->
+                            val current = if (PillPositionState.offset.isUnspecified) defaultPos else PillPositionState.offset
+
+                            PillPositionState.offset = Offset(
+                                x = (current.x + delta.x).coerceIn(0f, maxX),
+                                y = (current.y + delta.y).coerceIn(0f, maxY)
+                            )
+                            PillPositionState.notifyMoved()
+                        }
+                    ),
+                color = Color.Transparent,
+                shape = RoundedCornerShape(percent = 50)
+            ) {
+                Column {
+                    content()
+                }
             }
         }
     }
@@ -252,6 +320,10 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         // gestures, or in this case there is a voice input menu.
         window.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
 
+        PillPositionState.onInsetsRefreshRequest = {
+            window.window?.decorView?.requestLayout()
+        }
+
         composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setParentCompositionContext(null)
@@ -261,6 +333,42 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
 
         updateNavigationBarVisibility()
         return composeView!!
+    }
+
+    override fun onEvaluateFullscreenMode(): Boolean {
+        return false
+    }
+
+    override fun onConfigureWindow(win: Window, isFullscreen: Boolean, isCandidatesOnly: Boolean) {
+        super.onConfigureWindow(win, isFullscreen, isCandidatesOnly)
+        val lp = win.attributes
+        lp.width = WindowManager.LayoutParams.MATCH_PARENT
+        lp.height = WindowManager.LayoutParams.MATCH_PARENT
+        win.attributes = lp
+    }
+
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+
+        val pos = PillPositionState.offset
+        val size = PillPositionState.size
+
+        val dm = resources.displayMetrics
+        val density = dm.density
+        val pillPx = 56f * density
+        val marginPx = PILL_DEFAULT_BOTTOM_MARGIN_DP * density
+
+        val left = if (pos.isUnspecified) ((dm.widthPixels - pillPx) / 2f).toInt() else pos.x.toInt()
+        val top = if (pos.isUnspecified) (dm.heightPixels - pillPx - marginPx).toInt() else pos.y.toInt()
+        val width = if (size.width == 0) pillPx.toInt() else size.width
+        val height = if (size.height == 0) pillPx.toInt() else size.height
+
+        outInsets.contentTopInsets = top
+        outInsets.visibleTopInsets = top
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+        outInsets.touchableRegion.set(
+            android.graphics.Rect(left, top, left + width, top + height)
+        )
     }
 
     override fun onCreateCandidatesView(): View? {
