@@ -72,7 +72,6 @@ import org.futo.voiceinput.settings.ENABLE_ANIMATIONS
 import org.futo.voiceinput.settings.ENABLE_SOUND
 import org.futo.voiceinput.settings.LANGUAGE_TOGGLES
 import org.futo.voiceinput.settings.MANUALLY_SELECT_LANGUAGE
-import org.futo.voiceinput.settings.VERBOSE_PROGRESS
 import org.futo.voiceinput.settings.getSetting
 import org.futo.voiceinput.settings.useDataStoreValueNullable
 import org.futo.voiceinput.theme.Typography
@@ -234,6 +233,26 @@ fun ColumnScope.IdleMicPill() {
 }
 
 @Composable
+fun ColumnScope.ProcessingMicPill() {
+    Box(
+        modifier = Modifier.size(56.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) { }
+
+        CircularProgressIndicator(
+            modifier = Modifier.size(32.dp),
+            strokeWidth = 3.dp,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
 fun SelectLanguage(languages: Set<String>, onSelected: (String) -> Unit) {
     val languageItems = LANGUAGE_LIST.filter { languages.contains(it.id) }
 
@@ -320,13 +339,11 @@ abstract class RecognizerView {
     open val autoStartRecording: Boolean = true
 
     private var shouldPlaySounds = ENABLE_SOUND.default
-    private var shouldBeVerbose = VERBOSE_PROGRESS.default
     private var shouldRequestLanguage = MANUALLY_SELECT_LANGUAGE.default
     private var languages = LANGUAGE_TOGGLES.default
 
     suspend fun loadSettings() {
         shouldPlaySounds = context.getSetting(ENABLE_SOUND)
-        shouldBeVerbose = context.getSetting(VERBOSE_PROGRESS)
         shouldRequestLanguage = context.getSetting(MANUALLY_SELECT_LANGUAGE)
         languages = context.getSetting(LANGUAGE_TOGGLES)
     }
@@ -424,24 +441,6 @@ abstract class RecognizerView {
         }
 
         override fun decodingStatus(status: RunState) {
-            val text = if (shouldBeVerbose) {
-                when (status) {
-                    RunState.ExtractingFeatures -> context.getString(R.string.extracting_features)
-                    RunState.ProcessingEncoder -> context.getString(R.string.running_encoder)
-                    RunState.StartedDecoding -> context.getString(R.string.decoding_started)
-                    RunState.SwitchingModel -> context.getString(R.string.switching_to_english_model)
-                    RunState.OOMError -> context.getString(R.string.out_of_memory_error)
-                }
-            } else {
-                when (status) {
-                    RunState.ExtractingFeatures -> context.getString(R.string.processing)
-                    RunState.ProcessingEncoder -> context.getString(R.string.processing)
-                    RunState.StartedDecoding -> context.getString(R.string.processing)
-                    RunState.SwitchingModel -> context.getString(R.string.switching_to_english_model)
-                    RunState.OOMError -> context.getString(R.string.out_of_memory_error)
-                }
-            }
-
             if(status == RunState.StartedDecoding) {
                 this@RecognizerView.decodingStarted()
             }
@@ -454,7 +453,7 @@ abstract class RecognizerView {
                     allowClick = false,
                     onTap = { }
                 ) {
-                    RecognizeLoadingCircle(text = text)
+                    ProcessingMicPill()
                 }
             }
         }
@@ -468,7 +467,7 @@ abstract class RecognizerView {
                     allowClick = false,
                     onTap = { }
                 ) {
-                    RecognizeLoadingCircle(text = context.getString(R.string.initializing))
+                    ProcessingMicPill()
                 }
             }
         }
@@ -522,7 +521,7 @@ abstract class RecognizerView {
                     allowClick = false,
                     onTap = { }
                 ) {
-                    RecognizeLoadingCircle(text = stringResource(R.string.processing))
+                    ProcessingMicPill()
                 }
             }
         }
