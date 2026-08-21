@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -56,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
@@ -165,6 +167,7 @@ fun AnimatedRecognizeCircle(magnitude: Float = 0.5f, animated: Boolean = true) {
     val accentColor = MaterialTheme.colorScheme.primary
 
     Canvas(modifier = Modifier.fillMaxSize()) {
+        val strokeWidth = 2.dp.toPx()
         if (animated) {
             drawCircle(
                 color = accentColor.copy(alpha = 0.18f + (0.14f * breath)),
@@ -180,6 +183,12 @@ fun AnimatedRecognizeCircle(magnitude: Float = 0.5f, animated: Boolean = true) {
             },
             radius = size.height * (0.4f + radius * 0.1f)
         )
+
+        drawCircle(
+            color = accentColor,
+            radius = size.height / 2f - strokeWidth / 2f,
+            style = Stroke(width = strokeWidth)
+        )
     }
 }
 
@@ -191,7 +200,7 @@ fun InnerRecognize(
 
 
     Box(
-        modifier = Modifier.size(56.dp),
+        modifier = Modifier.size(48.dp),
         contentAlignment = Alignment.Center
     ) {
         AnimatedRecognizeCircle(
@@ -203,7 +212,7 @@ fun InnerRecognize(
             painter = painterResource(R.drawable.mic_2_),
             contentDescription = stringResource(R.string.stop_recording),
             modifier = Modifier
-                .size(32.dp)
+                .size(28.dp)
                 .align(Alignment.Center),
             tint = MaterialTheme.colorScheme.onPrimaryContainer
         )
@@ -214,19 +223,20 @@ fun InnerRecognize(
 @Composable
 fun ColumnScope.IdleMicPill() {
     Box(
-        modifier = Modifier.size(56.dp),
+        modifier = Modifier.size(48.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         ) { }
 
         Icon(
             painter = painterResource(R.drawable.mic_2_),
             contentDescription = null,
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(28.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
@@ -235,17 +245,18 @@ fun ColumnScope.IdleMicPill() {
 @Composable
 fun ColumnScope.ProcessingMicPill() {
     Box(
-        modifier = Modifier.size(56.dp),
+        modifier = Modifier.size(48.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         ) { }
 
         CircularProgressIndicator(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(28.dp),
             strokeWidth = 3.dp,
             color = MaterialTheme.colorScheme.primary
         )

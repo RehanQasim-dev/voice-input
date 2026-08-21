@@ -96,6 +96,7 @@ object PillPositionState {
 
 private const val PILL_DEFAULT_BOTTOM_MARGIN_DP = 12
 private const val BUTTON_DEFAULT_BOTTOM_MARGIN_DP = 12
+private const val BUTTON_SIZE_DP = 44
 const val BACKSPACE_DEFAULT_CENTER_X_FRACTION = 0.30f
 const val ENTER_DEFAULT_CENTER_X_FRACTION = 0.70f
 
@@ -132,14 +133,14 @@ private fun DraggableActionButton(
                     PillPositionState.notifyMoved()
                 }
             ),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = Color.Transparent,
         shape = RoundedCornerShape(percent = 50)
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 glyph,
-                fontSize = 22.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                fontSize = 20.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
             )
         }
     }
@@ -150,7 +151,7 @@ fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Bo
     UixThemeAuto(false) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
-            val pillSize = 56.dp
+            val pillSize = 48.dp
             val pillSizePx = with(density) { pillSize.toPx() }
 
             val defaultPos = with(density) {
@@ -168,7 +169,7 @@ fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Bo
             val rawPos = if (PillPositionState.offset.isUnspecified) defaultPos else PillPositionState.offset
             val pos = Offset(rawPos.x.coerceIn(0f, maxX), rawPos.y.coerceIn(0f, maxY))
 
-            val buttonSize = 44.dp
+            val buttonSize = BUTTON_SIZE_DP.dp
             val buttonSizePx = with(density) { buttonSize.toPx() }
             val buttonMaxX = (rootWidthPx - buttonSizePx).coerceAtLeast(0f)
             val buttonMaxY = (rootHeightPx - buttonSizePx).coerceAtLeast(0f)
@@ -459,7 +460,7 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
 
         val dm = resources.displayMetrics
         val density = dm.density
-        val pillPx = 56f * density
+        val pillPx = 48f * density
         val buttonPx = 44f * density
         val marginPx = PILL_DEFAULT_BOTTOM_MARGIN_DP * density
 
@@ -483,11 +484,18 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         region.union(rectFor(PillPositionState.backspaceOffset, buttonPx, BACKSPACE_DEFAULT_CENTER_X_FRACTION))
         region.union(rectFor(PillPositionState.enterOffset, buttonPx, ENTER_DEFAULT_CENTER_X_FRACTION))
 
+        // Reserve the bottom control strip so app content doesn't extend under it.
+        // Claims only this fixed strip — never grows with pill positions.
+        val stripPx = (BUTTON_DEFAULT_BOTTOM_MARGIN_DP + BUTTON_SIZE_DP) * density
         val decorHeight = window.window?.decorView?.height ?: 0
-        val zeroClaim = if (decorHeight > 0) decorHeight else dm.heightPixels
+        val contentClaim = if (decorHeight > 0) {
+            (decorHeight - stripPx).toInt().coerceAtLeast(0)
+        } else {
+            (dm.heightPixels - stripPx).toInt().coerceAtLeast(0)
+        }
 
-        outInsets.contentTopInsets = zeroClaim
-        outInsets.visibleTopInsets = zeroClaim
+        outInsets.contentTopInsets = contentClaim
+        outInsets.visibleTopInsets = contentClaim
         outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
         outInsets.touchableRegion.set(region)
     }
