@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -108,13 +107,6 @@ fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Bo
 
             val rawPos = if (PillPositionState.offset.isUnspecified) defaultPos else PillPositionState.offset
             val pos = Offset(rawPos.x.coerceIn(0f, maxX), rawPos.y.coerceIn(0f, maxY))
-
-            LaunchedEffect(Unit) {
-                if (PillPositionState.offset.isUnspecified) {
-                    PillPositionState.offset = defaultPos
-                    PillPositionState.notifyMoved()
-                }
-            }
 
             Surface(
                 modifier = Modifier
@@ -319,6 +311,7 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         // The input view is the main view where the user inputs text via keyclicks, handwriting,
         // gestures, or in this case there is a voice input menu.
         window.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        window.window?.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
 
         PillPositionState.onInsetsRefreshRequest = {
             window.window?.decorView?.requestLayout()
@@ -363,8 +356,11 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         val width = if (size.width == 0) pillPx.toInt() else size.width
         val height = if (size.height == 0) pillPx.toInt() else size.height
 
-        outInsets.contentTopInsets = top
-        outInsets.visibleTopInsets = top
+        val decorHeight = window.window?.decorView?.height ?: 0
+        val zeroClaim = if (decorHeight > 0) decorHeight else dm.heightPixels
+
+        outInsets.contentTopInsets = zeroClaim
+        outInsets.visibleTopInsets = zeroClaim
         outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
         outInsets.touchableRegion.set(
             android.graphics.Rect(left, top, left + width, top + height)
