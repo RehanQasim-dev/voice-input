@@ -12,7 +12,11 @@ cmake_minimum_required(VERSION 3.22.1)
 # build script scope).
 project("voiceinput")
 
-set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -g3")
+# Optimization must apply to ALL configs and BOTH languages: ggml.c is pure C,
+# and without this it compiles unoptimized (-O0) in debug builds, making
+# inference several times slower.
+set(CMAKE_C_FLAGS "-O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS "-O3 -DNDEBUG -Wall -Wextra")
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
