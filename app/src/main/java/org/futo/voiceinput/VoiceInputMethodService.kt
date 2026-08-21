@@ -10,37 +10,22 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -62,7 +47,6 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import org.futo.voiceinput.migration.scheduleModelMigrationJob
-import org.futo.voiceinput.settings.pages.ConditionalUnpaidNoticeInVoiceInputWindow
 import org.futo.voiceinput.theme.UixThemeAuto
 import org.futo.voiceinput.updates.scheduleUpdateCheckingJob
 
@@ -79,62 +63,17 @@ fun navBarHeight(): Dp = with(LocalDensity.current) {
 
 
 @Composable
-fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Boolean = false, onPauseVAD: (Boolean) -> Unit = { }, onFinish: () -> Unit = { }, content: @Composable ColumnScope.() -> Unit) {
+fun RecognizerInputMethodWindow(switchBack: (() -> Unit)? = null, allowClick: Boolean = false, onPauseVAD: (Boolean) -> Unit = { }, onFinish: () -> Unit = { }, onTap: () -> Unit = { }, content: @Composable ColumnScope.() -> Unit) {
     UixThemeAuto(false) {
         Surface(
             modifier = Modifier
-                .recognizerSurfaceClickable(disabled = !allowClick, onPauseVAD = onPauseVAD, onFinish = onFinish)
-                .fillMaxWidth()
-                .wrapContentHeight(),
-            color = MaterialTheme.colorScheme.surface
+                .recognizerSurfaceClickable(disabled = !allowClick, onPauseVAD = onPauseVAD, onTap = onTap, onLongPress = { switchBack?.invoke() })
+                .wrapContentSize(Alignment.BottomCenter),
+            color = Color.Transparent,
+            shape = RoundedCornerShape(percent = 50)
         ) {
-            val icon = painterResource(id = R.drawable.futo_o)
-            val bgIconTint = MaterialTheme.colorScheme.outline
-
-            Column(
-                modifier = Modifier.padding(0.dp, 0.dp, 0.dp, 64.dp).drawBehind {
-                    with(icon) {
-                        translate(left = -icon.intrinsicSize.width/2, top = -icon.intrinsicSize.height/2) {
-                            translate(left = size.width / 3, top = size.height / 2) {
-                                scale(scaleX = 1.3f, scaleY = 1.3f) {
-                                    draw(icon.intrinsicSize, colorFilter = ColorFilter.tint(bgIconTint))
-                                }
-
-                            }
-                        }
-                    }
-                }
-            ) {
-
-                val context = LocalContext.current
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Box(modifier = Modifier.align(Alignment.CenterStart)) {
-                        ConditionalUnpaidNoticeInVoiceInputWindow(switchBack)
-                    }
-
-                    Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                        if (switchBack != null) {
-                            IconButton(
-                                onClick = switchBack
-                            ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = stringResource(R.string.cancel),
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.height(32.dp))
-                        }
-                    }
-                }
-
-                Box(modifier = Modifier.padding(12.dp)) {
-                    
-                }
-
+            Column {
                 content()
-                Spacer(Modifier.height(navBarHeight()))
             }
         }
     }
@@ -203,6 +142,8 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         override val lifecycleScope: LifecycleCoroutineScope
             get() = this@VoiceInputMethodService.lifecycle.coroutineScope
 
+        override val autoStartRecording: Boolean = false
+
         private val currentContent: MutableState<@Composable () -> Unit> = mutableStateOf( { } )
         override fun setContent(content: @Composable () -> Unit) {
             currentContent.value = content
@@ -260,7 +201,9 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
 
                 it.commitText(modifiedResult, 1)
             }
-            onCancel()
+
+            reset()
+            showIdle()
         }
 
         override fun sendPartialResult(result: String): Boolean {
@@ -280,8 +223,8 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         }
 
         @Composable
-        override fun Window(onClose: () -> Unit, allowClick: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-            RecognizerInputMethodWindow(switchBack = onClose, onPauseVAD = onPauseVAD, onFinish = onFinish, allowClick = allowClick) {
+        override fun Window(onClose: () -> Unit, allowClick: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit, onTap: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+            RecognizerInputMethodWindow(switchBack = onClose, onPauseVAD = onPauseVAD, onFinish = onFinish, onTap = onTap, allowClick = allowClick) {
                 content()
             }
         }
@@ -307,6 +250,8 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
     override fun onCreateInputView(): View {
         // The input view is the main view where the user inputs text via keyclicks, handwriting,
         // gestures, or in this case there is a voice input menu.
+        window.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+
         composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setParentCompositionContext(null)

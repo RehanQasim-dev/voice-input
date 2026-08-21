@@ -8,6 +8,11 @@ import android.media.SoundPool
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.indication
@@ -22,8 +27,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -47,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -67,7 +75,9 @@ import org.futo.voiceinput.settings.getSetting
 import org.futo.voiceinput.settings.useDataStoreValueNullable
 import org.futo.voiceinput.theme.Typography
 
-fun Modifier.recognizerSurfaceClickable(disabled: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit): Modifier = composed {
+const val LONG_PRESS_EXIT_DURATION_MS = 1500L
+
+fun Modifier.recognizerSurfaceClickable(disabled: Boolean, onPauseVAD: (Boolean) -> Unit, onTap: () -> Unit, onLongPress: () -> Unit): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val ripple = rememberRipple(bounded = false)
 
@@ -78,12 +88,18 @@ fun Modifier.recognizerSurfaceClickable(disabled: Boolean, onPauseVAD: (Boolean)
 
                     interactionSource.emit(press)
                     onPauseVAD(true)
+                    val pressStart = SystemClock.elapsedRealtime()
                     val didRelease = this.tryAwaitRelease()
                     onPauseVAD(false)
 
                     if (didRelease) {
                         interactionSource.emit(PressInteraction.Release(press))
-                        onFinish()
+
+                        if (SystemClock.elapsedRealtime() - pressStart >= LONG_PRESS_EXIT_DURATION_MS) {
+                            onLongPress()
+                        } else {
+                            onTap()
+                        }
                     } else {
                         interactionSource.emit(PressInteraction.Cancel(press))
                     }
@@ -93,7 +109,7 @@ fun Modifier.recognizerSurfaceClickable(disabled: Boolean, onPauseVAD: (Boolean)
 }
 
 @Composable
-fun AnimatedRecognizeCircle(magnitude: Float = 0.5f) {
+fun AnimatedRecognizeCircle(magnitude: Float = 0.5f, animated: Boolean = true) {
     var radius by remember { mutableStateOf(0.0f) }
     var lastMagnitude by remember { mutableStateOf(0.0f) }
 
@@ -121,62 +137,96 @@ fun AnimatedRecognizeCircle(magnitude: Float = 0.5f) {
         }
     }
 
-    val color = MaterialTheme.colorScheme.primaryContainer
+    val breath = if (animated) {
+        rememberInfiniteTransition(label = "RecordingBreath").animateFloat(
+            initialValue = 0.0f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1200),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "RecordingBreathProgress"
+        ).value
+    } else {
+        0.0f
+    }
+
+    val baseColor = MaterialTheme.colorScheme.primaryContainer
+    val accentColor = MaterialTheme.colorScheme.primary
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val drawRadius = size.height * (0.8f + radius * 2.0f)
-        drawCircle(color = color, radius = drawRadius)
+        if (animated) {
+            drawCircle(
+                color = accentColor.copy(alpha = 0.18f + (0.14f * breath)),
+                radius = size.height * (0.44f + (0.03f * breath))
+            )
+        }
+
+        drawCircle(
+            color = if (animated) {
+                lerp(baseColor, accentColor, radius * 0.8f)
+            } else {
+                baseColor
+            },
+            radius = size.height * (0.4f + radius * 0.1f)
+        )
     }
 }
 
 @Composable
 fun InnerRecognize(
-    magnitude: Float = 0.5f,
-    state: MagnitudeState = MagnitudeState.MIC_MAY_BE_BLOCKED
+    magnitude: Float = 0.5f
 ) {
     val shouldUseCircle = useDataStoreValueNullable(ENABLE_ANIMATIONS.key, default = ENABLE_ANIMATIONS.default)
 
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp)
-            .padding(16.dp)
+        modifier = Modifier.size(56.dp),
+        contentAlignment = Alignment.Center
     ) {
-        AnimatedRecognizeCircle(magnitude = if(shouldUseCircle == true) { magnitude } else { 0.0f })
+        AnimatedRecognizeCircle(
+            magnitude = if(shouldUseCircle == true) { magnitude } else { 0.0f },
+            animated = shouldUseCircle == true
+        )
 
         Icon(
             painter = painterResource(R.drawable.mic_2_),
             contentDescription = stringResource(R.string.stop_recording),
             modifier = Modifier
-                .size(48.dp)
+                .size(32.dp)
                 .align(Alignment.Center),
             tint = MaterialTheme.colorScheme.onPrimaryContainer
         )
 
     }
+}
 
-    val text = when (state) {
-        MagnitudeState.NOT_TALKED_YET -> stringResource(R.string.try_saying_something)
-        MagnitudeState.MIC_MAY_BE_BLOCKED -> stringResource(R.string.no_audio_detected_is_your_microphone_blocked)
-        MagnitudeState.TALKING -> stringResource(R.string.listening)
-        MagnitudeState.ENDING_SOON_30S -> stringResource(R.string.ending_soon_30s)
-        MagnitudeState.ENDING_SOON_VAD -> stringResource(R.string.ending_soon_vad)
+@Composable
+fun ColumnScope.IdleMicPill() {
+    Box(
+        modifier = Modifier.size(56.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) { }
+
+        Icon(
+            painter = painterResource(R.drawable.mic_2_),
+            contentDescription = null,
+            modifier = Modifier.size(32.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
-
-    Text(
-        text,
-        modifier = Modifier.fillMaxWidth(),
-        textAlign = TextAlign.Center,
-        color = MaterialTheme.colorScheme.onSurface
-    )
 }
 
 @Composable
 fun SelectLanguage(languages: Set<String>, onSelected: (String) -> Unit) {
     val languageItems = LANGUAGE_LIST.filter { languages.contains(it.id) }
 
-    LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 140.dp), modifier = Modifier.fillMaxWidth()) {
+    LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 140.dp), modifier = Modifier.fillMaxWidth().widthIn(max = 280.dp)) {
         items(languageItems.size) {
             Button(onClick = {
                 onSelected(languageItems[it].id)
@@ -212,7 +262,7 @@ fun ColumnScope.PartialDecodingResult(text: String = "I am speaking [...]") {
     Surface(
         modifier = Modifier
             .padding(4.dp)
-            .fillMaxWidth(),
+            .widthIn(max = 240.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
         shape = RoundedCornerShape(4.dp)
     ) {
@@ -256,6 +306,8 @@ fun ColumnScope.RecognizeMicError(openSettings: () -> Unit) {
 }
 
 abstract class RecognizerView {
+    open val autoStartRecording: Boolean = true
+
     private var shouldPlaySounds = ENABLE_SOUND.default
     private var shouldBeVerbose = VERBOSE_PROGRESS.default
     private var shouldRequestLanguage = MANUALLY_SELECT_LANGUAGE.default
@@ -291,7 +343,7 @@ abstract class RecognizerView {
     abstract fun decodingStarted()
 
     @Composable
-    abstract fun Window(onClose: () -> Unit, allowClick: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit, content: @Composable ColumnScope.() -> Unit)
+    abstract fun Window(onClose: () -> Unit, allowClick: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit, onTap: () -> Unit, content: @Composable ColumnScope.() -> Unit)
 
     private val recognizer = object : AudioRecognizer() {
         override val context: Context
@@ -350,7 +402,8 @@ abstract class RecognizerView {
                             onClose = { cancelRecognizer() },
                             onFinish = { finishRecognizerIfRecording() },
                             onPauseVAD = { v -> pauseVAD(v) },
-                            allowClick = false
+                            allowClick = false,
+                            onTap = { }
                         ) {
                             PartialDecodingResult(text = result)
                         }
@@ -387,7 +440,8 @@ abstract class RecognizerView {
                     onClose = { cancelRecognizer() },
                     onFinish = { finishRecognizerIfRecording() },
                     onPauseVAD = { v -> pauseVAD(v) },
-                    allowClick = false
+                    allowClick = false,
+                    onTap = { }
                 ) {
                     RecognizeLoadingCircle(text = text)
                 }
@@ -400,7 +454,8 @@ abstract class RecognizerView {
                     onClose = { cancelRecognizer() },
                     onFinish = { },
                     onPauseVAD = { },
-                    allowClick = false
+                    allowClick = false,
+                    onTap = { }
                 ) {
                     RecognizeLoadingCircle(text = context.getString(R.string.initializing))
                 }
@@ -417,7 +472,8 @@ abstract class RecognizerView {
                     onClose = { cancelRecognizer() },
                     onFinish = { openPermissionSettings() },
                     onPauseVAD = { },
-                    allowClick = true
+                    allowClick = true,
+                    onTap = { openPermissionSettings() }
                 ) {
                     RecognizeMicError(openSettings = { openPermissionSettings() })
                 }
@@ -436,11 +492,11 @@ abstract class RecognizerView {
                     onClose = { cancelRecognizer() },
                     onFinish = { finishRecognizerIfRecording() },
                     onPauseVAD = { v -> pauseVAD(v) },
-                    allowClick = true
+                    allowClick = true,
+                    onTap = { finishRecognizerIfRecording() }
                 ) {
                     InnerRecognize(
-                        magnitude = magnitude,
-                        state = state
+                        magnitude = magnitude
                     )
                 }
             }
@@ -452,7 +508,8 @@ abstract class RecognizerView {
                     onClose = { cancelRecognizer() },
                     onFinish = { },
                     onPauseVAD = { },
-                    allowClick = false
+                    allowClick = false,
+                    onTap = { }
                 ) {
                     RecognizeLoadingCircle(text = stringResource(R.string.processing))
                 }
@@ -466,6 +523,32 @@ abstract class RecognizerView {
 
     fun finishRecognizerIfRecording() {
         recognizer.finishRecognizerIfRecording()
+    }
+
+    fun startRecognizer() {
+        recognizer.create()
+    }
+
+    fun showIdle() {
+        setContent {
+            this@RecognizerView.Window(
+                onClose = { recognizer.cancelRecognizer() },
+                onFinish = { },
+                onPauseVAD = { },
+                allowClick = true,
+                onTap = { startRecognizer() }
+            ) {
+                IdleMicPill()
+            }
+        }
+    }
+
+    private fun showIdleOrStart() {
+        if (autoStartRecording) {
+            recognizer.create()
+        } else {
+            showIdle()
+        }
     }
 
     fun reset() {
@@ -485,13 +568,14 @@ abstract class RecognizerView {
                         onClose = { recognizer.cancelRecognizer() },
                         onFinish = { },
                         onPauseVAD = { },
-                        allowClick = false
+                        allowClick = false,
+                        onTap = { }
                     ) {
                         SelectLanguage(languages = languages, onSelected = {
                             recognizer.forceLanguage(it)
 
                             if(!recognizer.isCurrentlyRecording()) {
-                                recognizer.create()
+                                showIdleOrStart()
                             } else {
                                 // NOTE: If forceLanguage was set to "en" and English-only model was loaded
                                 // then we'll be stuck with English
@@ -502,7 +586,7 @@ abstract class RecognizerView {
                 }
             } else {
                 recognizer.forceLanguage(null)
-                recognizer.create()
+                showIdleOrStart()
             }
         }
     }

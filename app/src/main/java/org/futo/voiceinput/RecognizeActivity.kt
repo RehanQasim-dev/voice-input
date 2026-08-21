@@ -43,11 +43,11 @@ import org.futo.voiceinput.updates.scheduleUpdateCheckingJob
 
 
 @Composable
-fun RecognizeWindow(forceNoUnpaidNotice: Boolean = false, allowClick: Boolean = false, onClose: (() -> Unit)?, onPauseVAD: (Boolean) -> Unit = { }, onFinish: () -> Unit = { }, content: @Composable ColumnScope.() -> Unit) {
+fun RecognizeWindow(forceNoUnpaidNotice: Boolean = false, allowClick: Boolean = false, onClose: (() -> Unit)?, onPauseVAD: (Boolean) -> Unit = { }, onFinish: () -> Unit = { }, onTap: () -> Unit = { }, content: @Composable ColumnScope.() -> Unit) {
     UixThemeAuto {
         Surface(
             modifier = Modifier
-                .recognizerSurfaceClickable(disabled = !allowClick, onPauseVAD = onPauseVAD, onFinish = onFinish)
+                .recognizerSurfaceClickable(disabled = !allowClick, onPauseVAD = onPauseVAD, onTap = onTap, onLongPress = { onClose?.invoke() })
                 .width(280.dp)
                 .wrapContentHeight(),
             color = MaterialTheme.colorScheme.surface,
@@ -156,8 +156,8 @@ class RecognizeActivity : ComponentActivity() {
         }
 
         @Composable
-        override fun Window(onClose: () -> Unit, allowClick: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-            RecognizeWindow(onClose = onClose, onPauseVAD = onPauseVAD, onFinish = onFinish, allowClick = allowClick) {
+        override fun Window(onClose: () -> Unit, allowClick: Boolean, onPauseVAD: (Boolean) -> Unit, onFinish: () -> Unit, onTap: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+            RecognizeWindow(onClose = onClose, onPauseVAD = onPauseVAD, onFinish = onFinish, onTap = onTap, allowClick = allowClick) {
                 content()
             }
         }
