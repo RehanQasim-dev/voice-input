@@ -180,6 +180,7 @@ class RecognizeActivity : ComponentActivity() {
         super.onDestroy()
 
         recognizer.reset()
+        recognizer.releaseModel()
     }
 
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {

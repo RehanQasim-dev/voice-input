@@ -539,6 +539,14 @@ abstract class RecognizerView {
         recognizer.create()
     }
 
+    fun preload() {
+        recognizer.preload()
+    }
+
+    fun releaseModel() {
+        recognizer.releaseModel()
+    }
+
     fun showIdle() {
         setContent {
             this@RecognizerView.Window(
@@ -554,6 +562,8 @@ abstract class RecognizerView {
     }
 
     private fun showIdleOrStart() {
+        recognizer.preload()
+
         if (autoStartRecording) {
             recognizer.create()
         } else {

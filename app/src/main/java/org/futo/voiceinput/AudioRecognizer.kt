@@ -134,7 +134,13 @@ abstract class AudioRecognizer {
         floatSamples.clear()
 
         unfocusAudio()
+    }
 
+    fun preload() {
+        loadModel()
+    }
+
+    fun releaseModel() {
         lifecycleScope.launch {
             modelJob?.join()
             model?.close()
@@ -264,7 +270,7 @@ abstract class AudioRecognizer {
     }
 
     private fun loadModel() {
-        if (model == null) {
+        if (model == null && loadModelJob?.isActive != true) {
             loadModelJob = lifecycleScope.launch {
                 withContext(Dispatchers.Default) {
                     loadModelInner()
@@ -534,9 +540,6 @@ abstract class AudioRecognizer {
 
             return runModel()
         }
-
-        model!!.close()
-        model = null
 
         lifecycleScope.launch {
             withContext(Dispatchers.Main) {

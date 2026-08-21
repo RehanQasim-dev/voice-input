@@ -435,6 +435,7 @@ class VoiceInputMethodService : InputMethodService(), LifecycleOwner, ViewModelS
         super.onDestroy()
 
         println("Destroy")
+        recognizer.releaseModel()
         handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     }
 }
